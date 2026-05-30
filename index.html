@@ -1,203 +1,56 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>RadarMyDrive</title>
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="RadarMyDrive">
-  <link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #3b82f6 100%);
-      color: white;
-      height: 100vh;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 20px;
-    }
-    h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 8px; }
-   .subtitle { opacity: 0.8; margin-bottom: 40px; font-size: 1.1rem; }
-   .orb {
-      width: 160px; height: 160px;
-      border-radius: 50%;
-      background: radial-gradient(circle at 30% 30%, #60a5fa, #2563eb);
-      box-shadow: 0 0 60px rgba(59, 130, 246, 0.6), inset 0 0 40px rgba(255,255,255,0.2);
-      margin: 20px auto;
-      cursor: pointer;
-      transition: transform 0.2s;
-      display: flex; align-items: center; justify-content: center;
-    }
-   .orb:active { transform: scale(0.95); }
-   .orb.listening { animation: pulse 1.5s infinite; }
-    @keyframes pulse {
-      0%, 100% { box-shadow: 0 0 60px rgba(59, 130, 246, 0.6); }
-      50% { box-shadow: 0 0 100px rgba(96, 165, 250, 0.9); }
-    }
-    #micBtn {
-      width: 80px; height: 80px;
-      border-radius: 50%; border: none;
-      background: white; color: #1e40af;
-      font-size: 2rem; cursor: pointer;
-      box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-    }
-    #status { margin-top: 30px; font-size: 1.2rem; min-height: 60px; }
-    #result { margin-top: 20px; font-size: 2rem; font-weight: 700; min-height: 40px; }
-   .inputs { margin-top: 20px; font-size: 0.9rem; opacity: 0.7; }
-  </style>
-</head>
-<body>
-  <h1>RadarMyDrive</h1>
-  <div class="subtitle">Voice score any delivery offer</div>
-
-  <div class="orb" id="orb">
-    <button id="micBtn">🎤</button>
-  </div>
-
-  <div id="status">Tap the mic and say:<br>"$8.50 payout, 3.2 miles, 18 minutes"</div>
-  <div id="result"></div>
-  <div class="inputs" id="inputs"></div>
-
-  <script>
-    const orb = document.getElementById('orb');
-    const micBtn = document.getElementById('micBtn');
-    const status = document.getElementById('status');
-    const result = document.getElementById('result');
-    const inputs = document.getElementById('inputs');
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.lang = 'en-US';
-
-    const synth = window.speechSynthesis;
-
-    function speak(text) {
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.rate = 1.1;
-      utter.pitch = 1;
-      synth.speak(utter);
-    }
-
-    function parseOffer(transcript) {
-      const payout = parseFloat(transcript.match(/\$?(\d+\.?\d*)/)?.[1]);
-      const miles = parseFloat(transcript.match(/(\d+\.?\d*)\s*(mile|miles|mi)/i)?.[1]);
-      const minutes = parseFloat(transcript.match(/(\d+\.?\d*)\s*(minute|minutes|min)/i)?.[1]);
-      return { payout, miles, minutes };
-    }
-
-    function scoreOffer({ payout, miles, minutes }) {
-      if (!payout ||!miles ||!minutes) return { score: 0, msg: "Missing info. Say payout, miles, and minutes." };
-
-      const dollarsPerMile = payout / miles;
-      const minutesPerMile = minutes / miles;
-      const dollarsPerHour = payout / (minutes / 60);
-
-      let score = 50;
-      if (dollarsPerMile >= 2.5) score += 30;
-      else if (dollarsPerMile >= 2) score += 20;
-      else if (dollarsPerMile >= 1.5) score += 10;
-      else score -= 10;
-
-      if (dollarsPerHour >= 30) score += 20;
-      else if (dollarsPerHour >= 25) score += 10;
-      else if (dollarsPerHour < 18) score -= 10;
-
-      if (minutesPerMile <= 2) score += 10;
-      else if (minutesPerMile >= 5) score -= 10;
-
-      score = Math.max(0, Math.min(100, Math.round(score)));
-
-      let verdict = "";
-      if (score >= 80) verdict = "Excellent run. Take it.";
-      else if (score >= 65) verdict = "Good offer. Accept.";
-      else if (score >= 50) verdict = "Fair. Your call.";
-      else if (score >= 35) verdict = "Low value. Decline.";
-      else verdict = "Trash tier. Skip.";
-
-      return { score, msg: verdict, dollarsPerMile: dollarsPerMile.toFixed(2), dollarsPerHour: dollarsPerHour.toFixed(0) };
-    }
-
-    function handleResult(transcript) {
-      const data = parseOffer(transcript);
-      const { score, msg, dollarsPerMile, dollarsPerHour } = scoreOffer(data);
-
-      inputs.innerHTML = `$${data.payout || '?'} | ${data.miles || '?'} mi | ${data.minutes || '?'} min`;
-      result.innerHTML = `${score}/100`;
-      status.innerHTML = msg;
-
-      if (score > 0) {
-        speak(`Score ${score}. ${msg} ${dollarsPerMile} dollars per mile. ${dollarsPerHour} dollars per hour.`);
-      } else {
-        speak(msg);
-      }
-    }
-
-    micBtn.onclick = () => {
-      status.innerHTML = "Listening...";
-      result.innerHTML = "";
-      inputs.innerHTML = "";
-      orb.classList.add('listening');
-      recognition.start();
-    };
-
-    recognition.onresult = (e) => {
-      const transcript = e.results[0][0].transcript;
-      status.innerHTML = `Heard: "${transcript}"`;
-      handleResult(transcript);
-      orb.classList.remove('listening');
-    };
-
-    recognition.onerror = () => {
-      status.innerHTML = "Didn't catch that. Tap mic again.";
-      orb.classList.remove('listening');
-    };
-
-    recognition.onend = () => {
-      orb.classList.remove('listening');
-    };
-
-    // Auto-greet
-    setTimeout(() => speak("Radar My Drive ready. Tap the mic to score an offer."), 500);
-  </script>
-</body>
-</html><html>
-        <head><title>Downloaded HTML</title></head>
-        <body>
-            <pre style="white-space: pre-wrap; word-wrap: break-word;"><!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#0f3d7a">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="RadarMyDrive">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>RadarMyDrive</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
 <style>
-    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    body {
-        margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Rounded", sans-serif;
-        background: linear-gradient(135deg, #2a145a, #0f3d7a, #0aa0c8);
-        background-size: 200% 200%;
-        animation: gradientMove 12s ease infinite;
-        color: white;
-        text-align: center;
-        padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom);
-        overflow-x: hidden;
-        min-height: 100vh;
-    }
-    @keyframes gradientMove {
-        0% { background-position: 0% 50% }
-        50% { background-position: 100% 50% }
-        100% { background-position</pre>
-        </body>
-    </html>
+body{font-family:-apple-system;background:linear-gradient(135deg,#0f172a,#1e3a8a,#3b82f6);color:#fff;height:100vh;margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;transition:all.3s}
+body.compact{justify-content:flex-end;padding:0 0 10px 0;background:transparent}
+h1{font-size:2.5rem;margin:0 0 8px}
+body.compact h1,body.compact.subtitle{display:none}
+.subtitle{opacity:.8;margin-bottom:40px}
+.orb{width:160px;height:160px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#60a5fa,#2563eb);box-shadow:0 0 60px rgba(59,130,246,.6);margin:20px auto;display:flex;align-items:center;justify-content:center;transition:all.3s}
+body.compact.orb{width:100%;height:60px;border-radius:30px;margin:0;box-shadow:0 -4px 20px rgba(0,0,0,.4)}
+#micBtn{width:80px;height:80px;border-radius:50%;border:0;background:#fff;color:#1e40af;font-size:2rem;cursor:pointer;transition:all.3s}
+body.compact #micBtn{width:50px;height:50px;font-size:1.5rem;margin-right:10px}
+#status{margin-top:30px;font-size:1.2rem;min-height:60px}
+body.compact #status{display:none}
+#result{margin-top:20px;font-size:2rem;font-weight:700;min-height:40px}
+body.compact #result{margin:0;font-size:1.5rem;min-height:0}
+.inputs{margin-top:20px;font-size:.9rem;opacity:.7}
+body.compact.inputs{display:none}
+.compactBar{display:none;align-items:center;justify-content:center;width:100%}
+body.compact.compactBar{display:flex}
+#toggle{position:fixed;top:20px;right:20px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);color:#fff;padding:8px 12px;border-radius:20px;font-size:.8rem}
+body.compact #toggle{top:auto;bottom:70px}
+</style>
+</head>
+<body>
+<button id="toggle">Mini Mode</button>
+<h1>RadarMyDrive</h1>
+<div class="subtitle">Voice score any delivery offer</div>
+<div class="orb">
+  <button id="micBtn">🎤</button>
+  <div class="compactBar">
+    <div id="result"></div>
+  </div>
+</div>
+<div id="status">Tap mic and say:<br>"$8.50 payout, 3.2 miles, 18 minutes"</div>
+<div class="inputs" id="inputs"></div>
+<script>
+const body=document.body,micBtn=document.getElementById('micBtn'),status=document.getElementById('status'),result=document.getElementById('result'),inputs=document.getElementById('inputs'),toggle=document.getElementById('toggle');
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition,rec=new SR();rec.lang='en-US';
+const synth=window.speechSynthesis;
+function speak(t){synth.speak(new SpeechSynthesisUtterance(t))}
+function parse(t){return{p:parseFloat(t.match(/\$?(\d+\.?\d*)/)?.[1]),mi:parseFloat(t.match(/(\d+\.?\d*)\s*(mi|mile)/i)?.[1]),m:parseFloat(t.match(/(\d+\.?\d*)\s*(min)/i)?.[1])}}
+function score(o){if(!o.p||!o.mi||!o.m)return{s:0,msg:"Missing info"};let s=50,d=o.p/o.mi,h=o.p/(o.m/60);if(d>=2.5)s+=30;else if(d>=2)s+=20;else if(d>=1.5)s+=10;else s-=10;if(h>=30)s+=20;else if(h>=25)s+=10;else if(h<18)s-=10;s=Math.max(0,Math.min(100,Math.round(s)));let v=s>=80?"Excellent. Take it.":s>=65?"Good offer. Accept.":s>=50?"Fair. Your call.":s>=35?"Low value. Decline.":"Trash tier. Skip.";return{s,msg:v,d:d.toFixed(2),h:h.toFixed(0)}}
+micBtn.onclick=()=>{status.innerHTML="Listening...";result.innerHTML="";inputs.innerHTML="";rec.start()};
+rec.onresult=e=>{let t=e.results[0][0].transcript,d=parse(t),r=score(d);inputs.innerHTML=`$${d.p||'?'} | ${d.mi||'?'} mi | ${d.m||'?'} min`;result.innerHTML=`${r.s}/100`;status.innerHTML=r.msg;if(r.s>0)speak(`Score ${r.s}. ${r.msg}`);else speak(r.msg)};
+rec.onerror=()=>status.innerHTML="Didn't catch that. Tap mic again.";
+toggle.onclick=()=>{body.classList.toggle('compact');toggle.innerHTML=body.classList.contains('compact')?'Full Mode':'Mini Mode'};
+setTimeout(()=>speak("Radar My Drive ready. Tap Mini Mode to float over delivery apps."),500);
+</script>
+</body>
+</html>
